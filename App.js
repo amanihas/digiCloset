@@ -1,15 +1,26 @@
 import React, { useState, useEffect } from "react";
-import { View, Text, Image, FlatList, StyleSheet, TextInput, TouchableOpacity, Alert } from "react-native";
+import {
+  View,
+  Text,
+  FlatList,
+  StyleSheet,
+  TextInput,
+  TouchableOpacity,
+  Image,
+  Alert,
+} from "react-native";
 import * as ImagePicker from "expo-image-picker";
 import axios from "axios";
 
-const API_URL = "http://192.168.1.220:5000/api/clothes"; // change YOUR_LOCAL_IP
+// Change this to your computer's local IP
+const API_URL = "http://192.168.1.220:5000/api/clothes";
 
 export default function App() {
   const [clothes, setClothes] = useState([]);
-  const [category, setCategory] = useState("");
+  const [name, setName] = useState("");
+  const [image, setImage] = useState(null);
 
-  // Fetch clothes from backend
+  // Fetch clothes on load
   useEffect(() => {
     fetchClothes();
   }, []);
@@ -19,93 +30,97 @@ export default function App() {
       const res = await axios.get(API_URL);
       setClothes(res.data);
     } catch (err) {
-      console.error(err);
-      Alert.alert("Error", "Could not load clothes from backend.");
+      console.error("Error fetching clothes", err);
     }
   };
 
-  // Add clothing item
-  const addClothing = async () => {
+  const pickImage = async () => {
     let result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       quality: 1,
     });
+
     if (!result.canceled) {
-      try {
-        const res = await axios.post(API_URL, {
-          uri: result.assets[0].uri,
-          wears: 0,
-          category: category || "Uncategorized",
-        });
-        setClothes([...clothes, res.data]);
-        setCategory("");
-      } catch (err) {
-        console.error(err);
-        Alert.alert("Error", "Could not save clothing.");
-      }
+      setImage(result.assets[0].uri);
     }
   };
 
-  // Increase wears
-  const increaseWears = async (item) => {
+  const addClothing = async () => {
+    if (!name) return Alert.alert("Error", "Please enter a clothing name");
+
     try {
-      const res = await axios.put(`${API_URL}/${item._id}`, {
-        wears: item.wears + 1,
-        category: item.category,
-      });
-      setClothes(clothes.map(c => (c._id === item._id ? res.data : c)));
+      const res = await axios.post(API_URL, { name, image });
+      setClothes([...clothes, res.data]);
+      setName("");
+      setImage(null);
     } catch (err) {
-      console.error(err);
-      Alert.alert("Error", "Could not update wears.");
+      console.error("Error adding clothing", err);
     }
   };
 
-  // Delete clothing
+  const incrementWear = async (id) => {
+    try {
+      const res = await axios.put(`${API_URL}/${id}`);
+      setClothes(clothes.map((c) => (c._id === id ? res.data : c)));
+    } catch (err) {
+      console.error("Error updating wear", err);
+    }
+  };
+
   const deleteClothing = async (id) => {
     try {
       await axios.delete(`${API_URL}/${id}`);
-      setClothes(clothes.filter(c => c._id !== id));
+      setClothes(clothes.filter((c) => c._id !== id));
     } catch (err) {
-      console.error(err);
-      Alert.alert("Error", "Could not delete clothing.");
+      console.error("Error deleting clothing", err);
     }
   };
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>👕 My Digital Closet</Text>
+      <Text style={styles.header}>👕 digiCloset</Text>
 
-      <TextInput
-        placeholder="Enter category"
-        value={category}
-        onChangeText={setCategory}
-        style={styles.input}
-      />
-
-      <TouchableOpacity style={styles.button} onPress={addClothing}>
-        <Text style={styles.buttonText}>Add Clothing</Text>
-      </TouchableOpacity>
+      <View style={styles.inputContainer}>
+        <TextInput
+          style={styles.input}
+          placeholder="Enter clothing name"
+          value={name}
+          onChangeText={setName}
+        />
+        <TouchableOpacity style={styles.button} onPress={pickImage}>
+          <Text style={styles.buttonText}>Pick Image</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.button} onPress={addClothing}>
+          <Text style={styles.buttonText}>Add</Text>
+        </TouchableOpacity>
+      </View>
 
       <FlatList
         data={clothes}
         keyExtractor={(item) => item._id}
         renderItem={({ item }) => (
-          <View style={styles.item}>
-            <Image source={{ uri: item.uri }} style={styles.image} />
-            <Text>{item.category}</Text>
-            <Text>Worn: {item.wears} times</Text>
-            <View style={{ flexDirection: "row", marginTop: 5 }}>
+          <View style={styles.card}>
+            {item.image ? (
+              <Image source={{ uri: item.image }} style={styles.image} />
+            ) : null}
+            <Text style={styles.itemName}>{item.name}</Text>
+            <Text style={styles.text}>Times worn: {item.timesWorn}</Text>
+            <Text style={styles.text}>
+              Sustainability Score: {item.sustainabilityScore}
+            </Text>
+
+            <View style={styles.actions}>
               <TouchableOpacity
-                style={styles.smallButton}
-                onPress={() => increaseWears(item)}
+                style={styles.actionButton}
+                onPress={() => incrementWear(item._id)}
               >
-                <Text style={styles.smallButtonText}>+1 Wear</Text>
+                <Text style={styles.actionText}>+ Wear</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.smallButton, { backgroundColor: "#b85c5c" }]}
+                style={styles.deleteButton}
                 onPress={() => deleteClothing(item._id)}
               >
-                <Text style={styles.smallButtonText}>Delete</Text>
+                <Text style={styles.actionText}>Delete</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -116,39 +131,80 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 20, alignItems: "center", backgroundColor: "#F5F5DC" },
-  title: { fontSize: 24, fontWeight: "bold", color: "#333333", marginBottom: 10 },
-  input: { 
-    borderWidth: 1, borderColor: "#ccc", borderRadius: 8, 
-    padding: 8, width: "100%", marginBottom: 10, backgroundColor: "#fff"
+  container: {
+    flex: 1,
+    backgroundColor: "#F5F5DC", // beige
+    padding: 20,
+  },
+  header: {
+    fontSize: 26,
+    fontWeight: "bold",
+    color: "#556B2F", // sage green
+    textAlign: "center",
+    marginBottom: 20,
+  },
+  inputContainer: {
+    marginBottom: 20,
+  },
+  input: {
+    backgroundColor: "#fff",
+    borderColor: "#ccc",
+    borderWidth: 1,
+    padding: 10,
+    marginBottom: 10,
+    borderRadius: 8,
   },
   button: {
-    backgroundColor: "#9CAF88",
-    padding: 12,
+    backgroundColor: "#556B2F",
+    padding: 10,
+    marginVertical: 5,
     borderRadius: 8,
-    marginBottom: 20,
-    width: "100%",
-    alignItems: "center",
   },
-  buttonText: { color: "#fff", fontWeight: "bold", fontSize: 16 },
-  item: {
-    marginTop: 15,
-    alignItems: "center",
-    borderRadius: 10,
+  buttonText: {
+    color: "#fff",
+    textAlign: "center",
+  },
+  card: {
     backgroundColor: "#fff",
+    padding: 15,
+    borderRadius: 10,
+    marginBottom: 15,
     shadowColor: "#000",
     shadowOpacity: 0.1,
-    shadowOffset: { width: 0, height: 2 },
-    shadowRadius: 4,
-    padding: 15,
-    width: "100%",
+    shadowRadius: 5,
+    elevation: 3,
   },
-  image: { width: 120, height: 120, borderRadius: 10, marginBottom: 10 },
-  smallButton: {
-    backgroundColor: "#9CAF88",
+  itemName: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: "#333",
+  },
+  text: {
+    color: "#444",
+    marginVertical: 2,
+  },
+  image: {
+    width: "100%",
+    height: 150,
+    borderRadius: 10,
+    marginBottom: 10,
+  },
+  actions: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 10,
+  },
+  actionButton: {
+    backgroundColor: "#556B2F",
     padding: 8,
     borderRadius: 6,
-    marginHorizontal: 5,
   },
-  smallButtonText: { color: "#fff", fontWeight: "bold" },
+  deleteButton: {
+    backgroundColor: "#B22222",
+    padding: 8,
+    borderRadius: 6,
+  },
+  actionText: {
+    color: "#fff",
+  },
 });
