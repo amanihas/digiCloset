@@ -1,44 +1,79 @@
+// LoginScreen.js
 import React, { useState } from "react";
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from "react-native";
+import { View, Text, TextInput, TouchableOpacity, Alert } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { globalStyles, colors } from "../styles";
 import axios from "axios";
 
-const API_URL = "http://192.168.1.220:5000/api/login";
-
-export default function LoginScreen({ navigation, onLogin }) {
-  const [username, setUsername] = useState("");
+export default function LoginScreen({ navigation, setToken }) {
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  // Replace this with your computer's local IP if using a physical device
+  const API_URL = "http://192.168.1.220:5000/api/auth/login";
 
   const handleLogin = async () => {
+    if (!email || !password) {
+      return Alert.alert("Error", "Please enter email and password");
+    }
+
+    setLoading(true);
     try {
-      const res = await axios.post(API_URL, { username, password });
-      onLogin(res.data.token);
+      const response = await axios.post(API_URL, { email, password });
+      const { token } = response.data;
+
+      // Store token locally
+      await AsyncStorage.setItem("token", token);
+      setToken(token); // Update app state if needed
+      Alert.alert("Success", "Logged in successfully!");
     } catch (err) {
-      Alert.alert("Error", "Invalid credentials or server issue");
+      console.log(err.response?.data);
+      Alert.alert(
+        "Login Failed",
+        err.response?.data?.msg || "Invalid credentials"
+      );
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.header}>👕 digiCloset Login</Text>
-      <TextInput style={styles.input} placeholder="Username" value={username} onChangeText={setUsername} />
-      <TextInput style={styles.input} placeholder="Password" secureTextEntry value={password} onChangeText={setPassword} />
+    <View style={globalStyles.container}>
+      <Text style={globalStyles.title}>Welcome Back 👗</Text>
 
-      <TouchableOpacity style={styles.button} onPress={handleLogin}>
-        <Text style={styles.buttonText}>Login</Text>
+      <TextInput
+        placeholder="Email"
+        value={email}
+        onChangeText={setEmail}
+        style={globalStyles.input}
+        autoCapitalize="none"
+      />
+      <TextInput
+        placeholder="Password"
+        value={password}
+        onChangeText={setPassword}
+        secureTextEntry
+        style={globalStyles.input}
+      />
+
+      <TouchableOpacity
+        style={globalStyles.button}
+        onPress={handleLogin}
+        disabled={loading}
+      >
+        <Text style={globalStyles.buttonText}>
+          {loading ? "Logging in..." : "Login"}
+        </Text>
       </TouchableOpacity>
 
       <TouchableOpacity onPress={() => navigation.navigate("Register")}>
-        <Text style={styles.link}>Don't have an account? Register</Text>
+        <Text style={{ color: colors.textDark, marginTop: 15 }}>
+          Don’t have an account? Register
+        </Text>
       </TouchableOpacity>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, justifyContent: "center", padding: 20, backgroundColor: "#F5F5DC" },
-  header: { fontSize: 26, fontWeight: "bold", color: "#556B2F", textAlign: "center", marginBottom: 30 },
-  input: { backgroundColor: "#fff", borderWidth: 1, borderColor: "#ccc", borderRadius: 8, padding: 10, marginBottom: 15 },
-  button: { backgroundColor: "#556B2F", padding: 10, borderRadius: 8 },
-  buttonText: { color: "#fff", textAlign: "center" },
-  link: { color: "#556B2F", textAlign: "center", marginTop: 15 },
-});
+

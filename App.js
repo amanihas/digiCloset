@@ -1,37 +1,36 @@
-import React, { useState } from "react";
-import { NavigationContainer } from "@react-navigation/native";
-import { createStackNavigator } from "@react-navigation/stack";
+import React, { useEffect, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { NavigationContainer } from "@react-navigation/native";
+import { createNativeStackNavigator } from "@react-navigation/native-stack";
+
 import LoginScreen from "./screens/LoginScreen";
 import RegisterScreen from "./screens/RegisterScreen";
 import ClosetScreen from "./screens/ClosetScreen";
 
-const Stack = createStackNavigator();
+const Stack = createNativeStackNavigator();
 
 export default function App() {
-  const [userToken, setUserToken] = useState(null);
+  const [token, setToken] = useState(null);
 
-  const handleLogin = async (token) => {
-    await AsyncStorage.setItem("token", token);
-    setUserToken(token);
-  };
-
-  const handleLogout = async () => {
-    await AsyncStorage.removeItem("token");
-    setUserToken(null);
-  };
+  useEffect(() => {
+    const checkToken = async () => {
+      const savedToken = await AsyncStorage.getItem("token");
+      if (savedToken) setToken(savedToken);
+    };
+    checkToken();
+  }, []);
 
   return (
     <NavigationContainer>
-      <Stack.Navigator>
-        {userToken ? (
+      <Stack.Navigator screenOptions={{ headerShown: false }}>
+        {token ? (
           <Stack.Screen name="Closet">
-            {(props) => <ClosetScreen {...props} token={userToken} onLogout={handleLogout} />}
+            {(props) => <ClosetScreen {...props} token={token} setToken={setToken} />}
           </Stack.Screen>
         ) : (
           <>
             <Stack.Screen name="Login">
-              {(props) => <LoginScreen {...props} onLogin={handleLogin} />}
+              {(props) => <LoginScreen {...props} setToken={setToken} />}
             </Stack.Screen>
             <Stack.Screen name="Register" component={RegisterScreen} />
           </>
