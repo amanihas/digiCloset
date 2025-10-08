@@ -1,3 +1,4 @@
+// screens/ClosetScreen.js
 import React, { useEffect, useState } from "react";
 import { View, Text, FlatList, TouchableOpacity, Image, Alert } from "react-native";
 import * as ImagePicker from "expo-image-picker";
@@ -6,65 +7,147 @@ import axios from "axios";
 import { fetchClothes, createClothing, API_BASE } from "../api";
 import { globalStyles, colors } from "../styles";
 
-const CLOUDINARY_NAME = "dbmfhqhjh"; // replace with your cloud name
-const UPLOAD_PRESET = "digiClosetPreset"; // your unsigned preset
+const CLOUDINARY_NAME = "dbmfhqhjh"; // <-- replace if different
+const UPLOAD_PRESET = "digiCloset"; // <-- your unsigned preset
 
 export default function ClosetScreen({ token, setToken }) {
   const [clothes, setClothes] = useState([]);
   const [loading, setLoading] = useState(false);
 
+  useEffect(() => {
+    loadClothes();
+  }, []);
+
   const loadClothes = async () => {
     try {
       const res = await fetchClothes(token);
-      setClothes(res.data);
+      setClothes(res.data || []);
     } catch (err) {
       console.log("Fetch clothes error:", err.response?.data || err.message);
       Alert.alert("Error", "Could not load your clothes.");
     }
   };
 
-  useEffect(() => {
-    loadClothes();
-  }, []);
-
-  const uploadToCloudinary = async (uri) => {
-    // Cloudinary client-side unsigned upload
-    const data = new FormData();
-    data.append("file", { uri, type: "image/jpeg", name: "upload.jpg" });
-    data.append("upload_preset", digiCloset);
-
-    const res = await fetch(`https://api.cloudinary.com/v1_1/${dbmfhqhjh}/image/upload`, {
-      method: "POST",
-      body: data,
-    });
-    const file = await res.json();
-    if (!file.secure_url) throw new Error("Cloudinary upload failed");
-    return file.secure_url;
+  // Request permissions (media library + camera)
+  const ensurePermissions = async () => {
+    try {
+      const media = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (media.status !== "granted") {
+        Alert.alert("Permission required", "Please allow photo access in Settings.");
+        return false;
+      }
+      const cam = await ImagePicker.requestCameraPermissionsAsync();
+      if (cam.status !== "granted") {
+        Alert.alert("Permission required", "Please allow camera access in Settings.");
+        return false;
+      }
+      return true;
+    } catch (err) {
+      console.error("Permission error:", err);
+      return false;
+    }
   };
 
-  const handleAddClothing = async () => {
-    // Ask for permissions is handled by expo; ensure configured in app.json if needed
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaType.Images,
-      allowsEditing: true,
-      quality: 0.8,
-    });
-
-    if (result.canceled) return;
+  // Pick from gallery
+  const pickFromGallery = async () => {
     try {
-      setLoading(true);
-      const uri = result.assets[0].uri;
-      const uploadedUrl = await uploadToCloudinary(uri);
+      // ensure permission first (optional - request again)
+      const mediaPerm = await ImagePicker.getMediaLibraryPermissionsAsync();
+      if (!mediaPerm.granted) {
+        const r = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (r.status !== "granted") {
+          Alert.alert("Permission denied", "Please enable photo permissions in Settings.");
+          return;
+        }
+      }
 
-      // create clothing in backend
+      // NOTE: We purposely do NOT reference ImagePicker.MediaTypeOptions or ImagePicker.MediaType
+      // because some versions of expo-image-picker don't export those constants.
+      // This call will open the gallery. Default behavior returns picked images.
+      const result = await ImagePicker.launchImageLibraryAsync({
+        allowsEditing: true,
+        quality: 0.8,
+        // no mediaTypes field here to avoid 'Images' property errors across versions
+      });
+
+      if (result.canceled || !result.assets || result.assets.length === 0) return;
+      const uri = result.assets[0].uri;
+      await uploadAndCreate(uri);
+    } catch (err) {
+      console.error("pickFromGallery error:", err);
+      Alert.alert("Error", "Could not pick image.");
+    }
+  };
+
+  // Take a photo
+  const takePhoto = async () => {
+    try {
+      const camPerm = await ImagePicker.getCameraPermissionsAsync();
+      if (!camPerm.granted) {
+        const r = await ImagePicker.requestCameraPermissionsAsync();
+        if (r.status !== "granted") {
+          Alert.alert("Permission denied", "Please enable camera permissions in Settings.");
+          return;
+        }
+      }
+
+      const result = await ImagePicker.launchCameraAsync({
+        allowsEditing: true,
+        quality: 0.8,
+        // no mediaTypes here either
+      });
+
+      if (result.canceled || !result.assets || result.assets.length === 0) return;
+      const uri = result.assets[0].uri;
+      await uploadAndCreate(uri);
+    } catch (err) {
+      console.error("takePhoto error:", err);
+      Alert.alert("Error", "Could not take photo.");
+    }
+  };
+
+  // Upload to Cloudinary and then create clothing item in backend
+  const uploadAndCreate = async (uri) => {
+    if (!uri) return;
+    setLoading(true);
+    try {
+      const uploadedUrl = await uploadToCloudinary(uri);
       const res = await createClothing(token, { name: "New Item", image: uploadedUrl });
       setClothes((prev) => [...prev, res.data]);
     } catch (err) {
-      console.log("Add clothing error:", err.response?.data || err.message);
-      Alert.alert("Upload failed", "Try again.");
+      console.log("uploadAndCreate error:", err.response?.data || err.message);
+      Alert.alert("Upload failed", "Please try again.");
     } finally {
       setLoading(false);
     }
+  };
+
+  // Cloudinary unsigned upload
+  const uploadToCloudinary = async (uri) => {
+    const formData = new FormData();
+    formData.append("file", {
+      uri,
+      name: "photo.jpg",
+      type: "image/jpeg",
+    });
+    formData.append("upload_preset", UPLOAD_PRESET);
+
+    const url = `https://api.cloudinary.com/v1_1/${CLOUDINARY_NAME}/image/upload`;
+    const resp = await fetch(url, { method: "POST", body: formData });
+    const data = await resp.json();
+    if (!data.secure_url) {
+      console.error("Cloudinary upload failed", data);
+      throw new Error("Cloudinary upload failed");
+    }
+    return data.secure_url;
+  };
+
+  const onAddPress = () => {
+    Alert.alert("Add Clothing", "Choose an option", [
+      { text: "Take Photo", onPress: takePhoto },
+      { text: "Pick from Gallery", onPress: pickFromGallery },
+      { text: "Cancel", style: "cancel" },
+    ]);
   };
 
   const handleLogout = async () => {
@@ -74,7 +157,11 @@ export default function ClosetScreen({ token, setToken }) {
 
   const renderItem = ({ item }) => (
     <View style={{ flex: 1, margin: 5 }}>
-      <Image source={{ uri: item.image }} style={{ width: "100%", height: 150, borderRadius: 10, backgroundColor: colors.white }} />
+      {item.image ? (
+        <Image source={{ uri: item.image }} style={{ width: "100%", height: 150, borderRadius: 10, backgroundColor: colors.white }} />
+      ) : (
+        <View style={{ width: "100%", height: 150, borderRadius: 10, backgroundColor: "#eee" }} />
+      )}
       <Text style={{ textAlign: "center", marginTop: 5 }}>{item.name}</Text>
     </View>
   );
@@ -85,7 +172,7 @@ export default function ClosetScreen({ token, setToken }) {
 
       <FlatList data={clothes} keyExtractor={(item) => item._id} numColumns={2} renderItem={renderItem} />
 
-      <TouchableOpacity style={globalStyles.button} onPress={handleAddClothing} disabled={loading}>
+      <TouchableOpacity style={globalStyles.button} onPress={onAddPress} disabled={loading}>
         <Text style={globalStyles.buttonText}>{loading ? "Adding..." : "➕ Add Clothing"}</Text>
       </TouchableOpacity>
 
