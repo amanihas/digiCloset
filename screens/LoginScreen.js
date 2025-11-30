@@ -13,14 +13,20 @@ export default function LoginScreen({ navigation, setToken }) {
   const API_URL = `${API_BASE}/auth/login`;
 
   const handleLogin = async () => {
-    if (!email || !password) return Alert.alert("Error", "Enter email & password");
+    if (!email || !password)
+      return Alert.alert("Error", "Enter email & password");
 
     setLoading(true);
     try {
       const res = await axios.post(API_URL, { email, password });
-      const { token } = res.data;
+      const { token, user } = res.data;
+
+      // Save both token and username to AsyncStorage
       await AsyncStorage.setItem("token", token);
+      await AsyncStorage.setItem("username", user.username);
+
       setToken(token);
+      navigation.replace("Home");
     } catch (err) {
       console.log("Login error:", err.response?.data || err.message);
       Alert.alert("Login failed", err.response?.data?.msg || "Invalid credentials");

@@ -1,40 +1,36 @@
-import React, { useEffect, useState } from "react";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import React, { useState } from "react";
 import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
-
+import LandingScreen from "./screens/LandingScreen";
 import LoginScreen from "./screens/LoginScreen";
 import RegisterScreen from "./screens/RegisterScreen";
-import ClosetScreen from "./screens/ClosetScreen";
+import HomeScreen from "./screens/HomeScreen";
+import SustainabilityScreen from "./screens/SustainabilityScreen";
 
 const Stack = createNativeStackNavigator();
 
 export default function App() {
   const [token, setToken] = useState(null);
-
-  useEffect(() => {
-    const checkToken = async () => {
-      const savedToken = await AsyncStorage.getItem("token");
-      if (savedToken) setToken(savedToken);
-    };
-    checkToken();
-  }, []);
+  const [username, setUsername] = useState("");
 
   return (
     <NavigationContainer>
-      <Stack.Navigator screenOptions={{ headerShown: false }}>
-        {token ? (
-          <Stack.Screen name="Closet">
-            {(props) => <ClosetScreen {...props} token={token} setToken={setToken} />}
-          </Stack.Screen>
-        ) : (
-          <>
-            <Stack.Screen name="Login">
-              {(props) => <LoginScreen {...props} setToken={setToken} />}
-            </Stack.Screen>
-            <Stack.Screen name="Register" component={RegisterScreen} />
-          </>
-        )}
+      <Stack.Navigator screenOptions={{ headerShown: false }} initialRouteName="Landing">
+        <Stack.Screen name="Landing" component={LandingScreen} />
+        <Stack.Screen name="Login">
+          {(props) => <LoginScreen {...props} setToken={setToken} setUsername={setUsername} />}
+        </Stack.Screen>
+        <Stack.Screen name="Register" component={RegisterScreen} />
+        <Stack.Screen name="Home">
+          {(props) => (
+            <HomeScreen {...props} setToken={setToken} username={username} />
+          )}
+        </Stack.Screen>
+        <Stack.Screen name="Sustainability">
+          {(props) => (
+            <SustainabilityScreen {...props} username={username} />
+          )}
+        </Stack.Screen>
       </Stack.Navigator>
     </NavigationContainer>
   );
